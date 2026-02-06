@@ -1,0 +1,27 @@
+{
+  "name": "@circlesac/oneup",
+  "version": "26.2.0",
+  "description": "CalVer-based version management for npm packages",
+  "bin": {
+    "oneup": "bin/oneup"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/circlesac/oneup.git"
+  },
+  "keywords": [
+    "calver",
+    "version",
+    "npm",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/circlesac/oneup/issues"
+  },
+  "homepage": "https://github.com/circlesac/oneup#readme"
+}

@@ -1,0 +1,21 @@
+[package]
+name = "oneup"
+version = "26.2.0"
+edition = "2024"
+description = "CalVer-based version management for npm packages"
+license = "MIT"
+repository = "https://github.com/circlesac/oneup"
+keywords = ["calver", "version", "npm", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1"
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+git2 = { version = "0.19", features = ["vendored-openssl"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
