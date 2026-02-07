@@ -90,20 +90,25 @@ pub fn run(args: VersionArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 7. Update target file
-    target.write(&args.target, &new_version)?;
-
-    if args.verbose {
-        eprintln!("[file] updated {}", args.target.display());
-    }
-
-    // 8. Git commit + tag (unless --no-git-tag-version)
+    // 7. Check working tree before making changes
     if !args.no_git_tag_version {
         let git = GitRepo::open(&args.target)?;
 
         if !args.force && !git.is_clean()? {
             bail!("working tree has uncommitted changes (use --force to proceed)");
         }
+    }
+
+    // 8. Update target file
+    target.write(&args.target, &new_version)?;
+
+    if args.verbose {
+        eprintln!("[file] updated {}", args.target.display());
+    }
+
+    // 9. Git commit + tag (unless --no-git-tag-version)
+    if !args.no_git_tag_version {
+        let git = GitRepo::open(&args.target)?;
 
         if args.force {
             git.commit_and_tag_force(&args.target, &new_version, &args.message)?;
