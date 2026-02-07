@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "oneup", about = "CalVer-based version management for npm packages")]
+#[command(name = "oneup", about = "CalVer-based version management")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -16,11 +16,11 @@ pub enum Commands {
 
 #[derive(Parser)]
 pub struct VersionArgs {
-    /// Target JSON file
-    #[arg(long, default_value = "./package.json")]
-    pub target: PathBuf,
+    /// Target file(s) — repeatable (auto-detected if omitted)
+    #[arg(long)]
+    pub target: Vec<PathBuf>,
 
-    /// npm registry URL override (auto-detected from .npmrc if not set)
+    /// Registry URL override (auto-detected from .npmrc or crates.io)
     #[arg(long)]
     pub registry: Option<String>,
 

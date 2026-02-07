@@ -28,8 +28,13 @@ impl GitRepo {
         Ok(statuses.is_empty())
     }
 
-    /// Stage a file, commit, and create an annotated tag.
-    pub fn commit_and_tag(&self, file_path: &Path, version: &str, message: &str) -> Result<()> {
+    /// Stage files, commit, and create an annotated tag.
+    pub fn commit_and_tag(
+        &self,
+        file_paths: &[&Path],
+        version: &str,
+        message: &str,
+    ) -> Result<()> {
         let msg = message.replace("%s", version);
         let tag_name = format!("v{version}");
 
@@ -38,33 +43,7 @@ impl GitRepo {
             bail!("tag {tag_name} already exists (use --force to overwrite)");
         }
 
-        // Stage the file
-        let mut index = self.repo.index().context("failed to open index")?;
-        let workdir = self
-            .repo
-            .workdir()
-            .context("bare repositories are not supported")?;
-        let relative = file_path
-            .canonicalize()?
-            .strip_prefix(workdir.canonicalize()?)
-            .context("target file is not inside the repository")?
-            .to_path_buf();
-        index
-            .add_path(&relative)
-            .with_context(|| format!("failed to stage {}", relative.display()))?;
-        index.write().context("failed to write index")?;
-        let tree_oid = index.write_tree().context("failed to write tree")?;
-        let tree = self.repo.find_tree(tree_oid)?;
-
-        // Build signature from git config
-        let sig = self
-            .repo
-            .signature()
-            .or_else(|_| Signature::now("bump", "bump@noreply"))
-            .context("failed to determine git signature")?;
-
-        // Get parent commit
-        let parent = self.repo.head()?.peel_to_commit()?;
+        let (tree, sig, parent) = self.stage_and_prepare(file_paths, &msg)?;
 
         // Create commit
         let commit_oid = self
@@ -84,7 +63,7 @@ impl GitRepo {
     /// Force-create a tag (overwrite if exists), used with --force.
     pub fn commit_and_tag_force(
         &self,
-        file_path: &Path,
+        file_paths: &[&Path],
         version: &str,
         message: &str,
     ) -> Result<()> {
@@ -96,31 +75,7 @@ impl GitRepo {
             let _ = self.repo.tag_delete(&tag_name);
         }
 
-        // Stage the file
-        let mut index = self.repo.index().context("failed to open index")?;
-        let workdir = self
-            .repo
-            .workdir()
-            .context("bare repositories are not supported")?;
-        let relative = file_path
-            .canonicalize()?
-            .strip_prefix(workdir.canonicalize()?)
-            .context("target file is not inside the repository")?
-            .to_path_buf();
-        index
-            .add_path(&relative)
-            .with_context(|| format!("failed to stage {}", relative.display()))?;
-        index.write().context("failed to write index")?;
-        let tree_oid = index.write_tree().context("failed to write tree")?;
-        let tree = self.repo.find_tree(tree_oid)?;
-
-        let sig = self
-            .repo
-            .signature()
-            .or_else(|_| Signature::now("bump", "bump@noreply"))
-            .context("failed to determine git signature")?;
-
-        let parent = self.repo.head()?.peel_to_commit()?;
+        let (tree, sig, parent) = self.stage_and_prepare(file_paths, &msg)?;
 
         let commit_oid = self
             .repo
@@ -133,5 +88,43 @@ impl GitRepo {
             .with_context(|| format!("failed to create tag {tag_name}"))?;
 
         Ok(())
+    }
+
+    fn stage_and_prepare(
+        &self,
+        file_paths: &[&Path],
+        _msg: &str,
+    ) -> Result<(git2::Tree<'_>, Signature<'_>, git2::Commit<'_>)> {
+        let mut index = self.repo.index().context("failed to open index")?;
+        let workdir = self
+            .repo
+            .workdir()
+            .context("bare repositories are not supported")?;
+        let workdir_canon = workdir.canonicalize()?;
+
+        for file_path in file_paths {
+            let relative = file_path
+                .canonicalize()?
+                .strip_prefix(&workdir_canon)
+                .context("target file is not inside the repository")?
+                .to_path_buf();
+            index
+                .add_path(&relative)
+                .with_context(|| format!("failed to stage {}", relative.display()))?;
+        }
+
+        index.write().context("failed to write index")?;
+        let tree_oid = index.write_tree().context("failed to write tree")?;
+        let tree = self.repo.find_tree(tree_oid)?;
+
+        let sig = self
+            .repo
+            .signature()
+            .or_else(|_| Signature::now("bump", "bump@noreply"))
+            .context("failed to determine git signature")?;
+
+        let parent = self.repo.head()?.peel_to_commit()?;
+
+        Ok((tree, sig, parent))
     }
 }

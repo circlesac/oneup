@@ -1,7 +1,7 @@
 {
   "name": "@circlesac/oneup",
-  "version": "26.2.3",
-  "description": "CalVer-based version management for npm packages",
+  "version": "26.2.4",
+  "description": "CalVer-based version management",
   "bin": {
     "oneup": "bin/oneup"
   },
