@@ -1,6 +1,6 @@
 [package]
 name = "oneup"
-version = "26.2.4"
+version = "26.2.5"
 edition = "2024"
 description = "CalVer-based version management"
 license = "MIT"

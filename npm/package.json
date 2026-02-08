@@ -1,27 +1,27 @@
 {
-  "name": "@circlesac/oneup",
-  "version": "26.2.4",
-  "description": "CalVer-based version management",
+  "author": "",
   "bin": {
     "oneup": "bin/oneup"
   },
-  "scripts": {
-    "postinstall": "node install.js"
+  "bugs": {
+    "url": "https://github.com/circlesac/oneup/issues"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/circlesac/oneup.git"
-  },
+  "description": "CalVer-based version management",
+  "homepage": "https://github.com/circlesac/oneup#readme",
   "keywords": [
     "calver",
     "version",
     "npm",
     "cli"
   ],
-  "author": "",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/circlesac/oneup/issues"
+  "name": "@circlesac/oneup",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/circlesac/oneup.git"
   },
-  "homepage": "https://github.com/circlesac/oneup#readme"
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "version": "26.2.5"
 }
