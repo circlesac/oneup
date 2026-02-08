@@ -15,15 +15,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install oneup
-        run: cargo install oneup
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Bump version
         id: bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          VERSION=$(oneup version --target Cargo.toml --target npm/package.json)
+          VERSION=$(npx @circlesac/oneup version --target Cargo.toml --target npm/package.json)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Push version commit
@@ -128,7 +130,7 @@ jobs:
           ref: main
 
       - name: Publish to crates.io
-        run: cargo publish
+        run: cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
