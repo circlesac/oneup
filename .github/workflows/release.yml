@@ -1,15 +1,36 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install oneup
+        run: cargo install oneup
+
+      - name: Bump version
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(oneup version --target Cargo.toml --target npm/package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Push version commit
+        run: git push origin main
+
   build:
+    needs: version
     strategy:
       matrix:
         include:
@@ -32,6 +53,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Install cross-compilation tools
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -75,10 +98,12 @@ jobs:
           path: ${{ matrix.name }}.zip
 
   github-release:
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -88,16 +113,19 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.version.outputs.version }}
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
           generate_release_notes: true
 
   publish-crates:
-    needs: github-release
+    needs: [version, github-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Publish to crates.io
         run: cargo publish
@@ -105,13 +133,15 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-npm:
-    needs: github-release
+    needs: [version, github-release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -125,10 +155,12 @@ jobs:
           npm publish
 
   publish-homebrew:
-    needs: github-release
+    needs: [version, github-release, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -139,7 +171,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${{ needs.version.outputs.version }}
           SHA_DARWIN_ARM64=$(shasum -a 256 artifacts/oneup-aarch64-apple-darwin/*.tar.gz | cut -d' ' -f1)
           SHA_DARWIN_X64=$(shasum -a 256 artifacts/oneup-x86_64-apple-darwin/*.tar.gz | cut -d' ' -f1)
           SHA_LINUX_ARM64=$(shasum -a 256 artifacts/oneup-aarch64-unknown-linux-gnu/*.tar.gz | cut -d' ' -f1)
@@ -160,3 +192,15 @@ jobs:
           git add Formula/oneup.rb
           git commit -m "Update oneup to ${VERSION}"
           git push
+
+  push-tag:
+    needs: [version, publish-crates, publish-npm, publish-homebrew]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Push tag
+        run: git push origin v${{ needs.version.outputs.version }}
