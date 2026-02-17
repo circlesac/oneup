@@ -1,0 +1,11 @@
+{
+  "name": "oneup",
+  "owner": { "name": "Circles Inc." },
+  "plugins": [
+    {
+      "name": "oneup",
+      "source": "./",
+      "description": "CalVer-based version management with oneup"
+    }
+  ]
+}
