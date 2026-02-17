@@ -1,0 +1,10 @@
+{
+  "name": "oneup",
+  "description": "CalVer-based version management with oneup",
+  "author": {
+    "name": "Circles Inc."
+  },
+  "repository": "https://github.com/circlesac/oneup",
+  "license": "MIT",
+  "keywords": ["calver", "versioning", "release", "npm", "cargo"]
+}

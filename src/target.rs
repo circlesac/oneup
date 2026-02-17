@@ -47,12 +47,7 @@ impl TargetFile {
         let version = obj
             .get("version")
             .and_then(|v| v.as_str())
-            .with_context(|| {
-                format!(
-                    "failed to parse {}: missing 'version' field",
-                    path.display()
-                )
-            })?
+            .unwrap_or("0.0.0")
             .to_string();
 
         Ok(Self {
@@ -179,9 +174,11 @@ mod tests {
     }
 
     #[test]
-    fn read_missing_version() {
+    fn read_missing_version_defaults_to_zero() {
         let f = temp_json(r#"{"name": "my-pkg"}"#);
-        assert!(TargetFile::read(f.path()).is_err());
+        let target = TargetFile::read(f.path()).unwrap();
+        assert_eq!(target.package_name, "my-pkg");
+        assert_eq!(target.version, "0.0.0");
     }
 
     #[test]

@@ -5,7 +5,6 @@ use anyhow::{Result, bail};
 use crate::cli::VersionArgs;
 use crate::crates_io::CratesIoClient;
 use crate::format::VersionFormat;
-use crate::git::GitRepo;
 use crate::npmrc::NpmrcConfig;
 use crate::registry::{PackageInfo, RegistryClient};
 use crate::target::TargetFile;
@@ -117,25 +116,11 @@ pub fn run(args: VersionArgs) -> Result<()> {
         for (path, _) in &targets {
             eprintln!("[dry-run] would write {}", path.display());
         }
-        if !args.no_git_tag_version {
-            let msg = args.message.replace("%s", &new_version);
-            eprintln!("[dry-run] would commit: \"{}\"", msg);
-            eprintln!("[dry-run] would tag: v{}", new_version);
-        }
         println!("{}", new_version);
         return Ok(());
     }
 
-    // 8. Check working tree before making changes
-    if !args.no_git_tag_version {
-        let git = GitRepo::open(&targets[0].0)?;
-
-        if !args.force && !git.is_clean()? {
-            bail!("working tree has uncommitted changes (use --force to proceed)");
-        }
-    }
-
-    // 9. Update all target files
+    // 8. Update all target files
     for (path, target) in &targets {
         target.write(path, &new_version)?;
 
@@ -144,25 +129,7 @@ pub fn run(args: VersionArgs) -> Result<()> {
         }
     }
 
-    // 10. Git commit + tag (unless --no-git-tag-version)
-    if !args.no_git_tag_version {
-        let git = GitRepo::open(&targets[0].0)?;
-        let paths: Vec<&std::path::Path> = targets.iter().map(|(p, _)| p.as_path()).collect();
-
-        if args.force {
-            git.commit_and_tag_force(&paths, &new_version, &args.message)?;
-        } else {
-            git.commit_and_tag(&paths, &new_version, &args.message)?;
-        }
-
-        if args.verbose {
-            let msg = args.message.replace("%s", &new_version);
-            eprintln!("[git] committed: \"{}\"", msg);
-            eprintln!("[git] tagged: v{}", new_version);
-        }
-    }
-
-    // 11. Print version to stdout
+    // 9. Print version to stdout
     println!("{}", new_version);
 
     Ok(())

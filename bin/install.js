@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
-const { version } = require("./package.json");
+const { version } = require("../package.json");
 
 const REPO = "circlesac/oneup";
 
@@ -50,7 +50,7 @@ async function main() {
 
   try {
     const data = await download(url);
-    const nativeDir = path.join(__dirname, "bin", "native");
+    const nativeDir = path.join(__dirname, "native");
 
     if (!fs.existsSync(nativeDir)) {
       fs.mkdirSync(nativeDir, { recursive: true });

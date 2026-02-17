@@ -10,7 +10,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Calculate next version, update target file, and optionally create git commit + tag
+    /// Calculate next version and update target files
     Version(VersionArgs),
 }
 
@@ -23,18 +23,6 @@ pub struct VersionArgs {
     /// Registry URL override (auto-detected from .npmrc or crates.io)
     #[arg(long)]
     pub registry: Option<String>,
-
-    /// Skip git commit and tag creation
-    #[arg(long)]
-    pub no_git_tag_version: bool,
-
-    /// Proceed even if the working tree has uncommitted changes
-    #[arg(long)]
-    pub force: bool,
-
-    /// Custom git commit/tag message (%s = version placeholder)
-    #[arg(short, long, default_value = "%s")]
-    pub message: String,
 
     /// Version format (CalVer tokens: YYYY, YY, MM, DD, MICRO)
     #[arg(long, default_value = "YY.MM.MICRO")]

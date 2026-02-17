@@ -1,0 +1,34 @@
+{
+  "name": "@circlesac/oneup",
+  "description": "CalVer-based version management",
+  "license": "MIT",
+  "bin": {
+    "oneup": "bin/oneup"
+  },
+  "files": [
+    "bin",
+    "skills"
+  ],
+  "scripts": {
+    "postinstall": "node bin/install.js"
+  },
+  "keywords": [
+    "calver",
+    "version",
+    "npm",
+    "cli"
+  ],
+  "homepage": "https://github.com/circlesac/oneup#readme",
+  "bugs": {
+    "url": "https://github.com/circlesac/oneup/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/circlesac/oneup.git"
+  },
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}

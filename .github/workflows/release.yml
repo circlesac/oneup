@@ -5,7 +5,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   version:
@@ -15,21 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Bump version
+      - name: Calculate version
         id: bump
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          VERSION=$(npx @circlesac/oneup version --target Cargo.toml --target npm/package.json)
+          VERSION=$(npx --yes @circlesac/oneup version --target Cargo.toml --target package.json | tail -1)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Push version commit
-        run: git push origin main
 
   build:
     needs: version
@@ -55,8 +44,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
+
+      - name: Write version
+        run: npx --yes @circlesac/oneup version --target Cargo.toml
 
       - name: Install cross-compilation tools
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -85,27 +75,16 @@ jobs:
           cd ../../..
         shell: bash
 
-      - name: Upload artifact (Unix)
-        if: matrix.os != 'windows-latest'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ matrix.name }}.tar.gz
-
-      - name: Upload artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: ${{ matrix.name }}.zip
+          path: ${{ matrix.name }}.*
 
   github-release:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -119,6 +98,7 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
+            bin/install.sh
           generate_release_notes: true
 
   publish-crates:
@@ -126,8 +106,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
+
+      - name: Write version
+        run: npx --yes @circlesac/oneup version --target Cargo.toml
 
       - name: Publish to crates.io
         run: cargo publish --allow-dirty
@@ -142,8 +123,6 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -151,18 +130,17 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
+      - name: Write version
+        run: npx --yes @circlesac/oneup version --target package.json
+
       - name: Publish to npm
-        run: |
-          cd npm
-          npm publish
+        run: npm publish
 
   publish-homebrew:
     needs: [version, github-release, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -195,14 +173,3 @@ jobs:
           git commit -m "Update oneup to ${VERSION}"
           git push
 
-  push-tag:
-    needs: [version, publish-crates, publish-npm, publish-homebrew]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Push tag
-        run: git push origin v${{ needs.version.outputs.version }}

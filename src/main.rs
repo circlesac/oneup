@@ -1,7 +1,6 @@
 mod cli;
 mod crates_io;
 mod format;
-mod git;
 mod npmrc;
 mod registry;
 mod target;
