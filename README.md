@@ -21,7 +21,8 @@ CalVer-based version management for npm packages and Rust crates.
 ### Pi
 
 ```bash
-pi install npm:@circlesac/oneup
+pi install git:circlesac/oneup
+# or: npx @mariozechner/pi-coding-agent install git:circlesac/oneup
 ```
 
 ## License
