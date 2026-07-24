@@ -2,12 +2,20 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
-use crate::cli::VersionArgs;
+use crate::cli::{Source, VersionArgs};
 use crate::crates_io::CratesIoClient;
 use crate::format::VersionFormat;
+use crate::git_source;
 use crate::npmrc::NpmrcConfig;
 use crate::registry::{PackageInfo, RegistryClient};
 use crate::target::TargetFile;
+
+/// The concrete version source after resolving `--source auto`.
+enum ResolvedSource {
+    Git,
+    Crates,
+    Npm,
+}
 
 pub fn run(args: VersionArgs) -> Result<()> {
     // 1. Parse version format
@@ -44,55 +52,81 @@ pub fn run(args: VersionArgs) -> Result<()> {
         );
     }
 
-    // 4. Query registry for published versions (using primary target)
-    let info = if primary_target.is_cargo() {
-        let client = CratesIoClient::new(args.registry.as_deref());
-
-        if args.verbose {
-            eprintln!("[registry] type: crates.io");
+    // 4. Query the version source for published versions (using primary target).
+    //    Resolve `auto`: crates.io for Cargo.toml, git tags for gradle/Go, npm otherwise.
+    let resolved = match args.source {
+        Source::Git => ResolvedSource::Git,
+        Source::Crates => ResolvedSource::Crates,
+        Source::Npm => ResolvedSource::Npm,
+        Source::Auto => {
+            if primary_target.is_cargo() {
+                ResolvedSource::Crates
+            } else if primary_target.is_gradle() || primary_target.is_go() {
+                ResolvedSource::Git
+            } else {
+                ResolvedSource::Npm
+            }
         }
+    };
 
-        client.get_package(&primary_target.package_name, args.verbose)?
-    } else {
-        let project_dir = primary_path
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
+    let project_dir = primary_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
 
-        let scope = if primary_target.package_name.starts_with('@') {
-            primary_target.package_name.split('/').next()
-        } else {
-            None
-        };
+    let info = match resolved {
+        ResolvedSource::Git => {
+            if args.verbose {
+                eprintln!("[source] type: git tags");
+                eprintln!("[source] dir: {}", project_dir.display());
+            }
 
-        let (registry_url, auth_token) = if let Some(ref url) = args.registry {
-            (url.trim_end_matches('/').to_string(), None)
-        } else {
-            let npmrc = NpmrcConfig::load(project_dir)?;
-            let url = npmrc.registry_url(scope);
-            let token = npmrc.auth_token(&url);
-            (url, token)
-        };
-
-        if args.verbose {
-            eprintln!("[registry] type: npm");
-            eprintln!("[registry] url: {}", registry_url);
-            eprintln!(
-                "[registry] auth: {}",
-                if auth_token.is_some() {
-                    "token"
-                } else {
-                    "none"
-                }
-            );
+            git_source::get_package(project_dir, &fmt, args.verbose)
         }
+        ResolvedSource::Crates => {
+            let client = CratesIoClient::new(args.registry.as_deref());
 
-        let client = RegistryClient::new(&registry_url, auth_token);
-        client.get_package(&primary_target.package_name, args.verbose)?
+            if args.verbose {
+                eprintln!("[registry] type: crates.io");
+            }
+
+            client.get_package(&primary_target.package_name, args.verbose)?
+        }
+        ResolvedSource::Npm => {
+            let scope = if primary_target.package_name.starts_with('@') {
+                primary_target.package_name.split('/').next()
+            } else {
+                None
+            };
+
+            let (registry_url, auth_token) = if let Some(ref url) = args.registry {
+                (url.trim_end_matches('/').to_string(), None)
+            } else {
+                let npmrc = NpmrcConfig::load(project_dir)?;
+                let url = npmrc.registry_url(scope);
+                let token = npmrc.auth_token(&url);
+                (url, token)
+            };
+
+            if args.verbose {
+                eprintln!("[registry] type: npm");
+                eprintln!("[registry] url: {}", registry_url);
+                eprintln!(
+                    "[registry] auth: {}",
+                    if auth_token.is_some() {
+                        "token"
+                    } else {
+                        "none"
+                    }
+                );
+            }
+
+            let client = RegistryClient::new(&registry_url, auth_token);
+            client.get_package(&primary_target.package_name, args.verbose)?
+        }
     };
 
     // 5. Determine next version
-    let new_version =
-        determine_version(info, &primary_target.package_name, &fmt, args.verbose)?;
+    let new_version = determine_version(info, &primary_target.package_name, &fmt, args.verbose)?;
 
     // 6. Check if version actually changed
     if new_version == primary_target.version {
@@ -136,21 +170,43 @@ pub fn run(args: VersionArgs) -> Result<()> {
 }
 
 fn detect_targets() -> Result<Vec<PathBuf>> {
-    let cargo = PathBuf::from("Cargo.toml");
-    let package = PathBuf::from("package.json");
+    let mut targets = Vec::new();
 
-    match (cargo.exists(), package.exists()) {
-        (true, true) => Ok(vec![cargo, package]),
-        (true, false) => Ok(vec![cargo]),
-        (false, true) => Ok(vec![package]),
-        (false, false) => bail!("no Cargo.toml or package.json found in current directory"),
+    // Highest priority: npm / cargo manifests.
+    for p in ["Cargo.toml", "package.json"] {
+        let pb = PathBuf::from(p);
+        if pb.exists() {
+            targets.push(pb);
+        }
     }
+
+    // Lowest priority: gradle / Go source files (common Android module locations).
+    for p in [
+        "build.gradle",
+        "build.gradle.kts",
+        "app/build.gradle",
+        "app/build.gradle.kts",
+        "presentation/build.gradle",
+        "presentation/build.gradle.kts",
+        "version.go",
+    ] {
+        let pb = PathBuf::from(p);
+        if pb.exists() {
+            targets.push(pb);
+        }
+    }
+
+    if targets.is_empty() {
+        bail!(
+            "no target files found (Cargo.toml, package.json, build.gradle, version.go) in current directory"
+        );
+    }
+
+    Ok(targets)
 }
 
 fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse = |s: &str| -> Vec<u64> {
-        s.split('.').filter_map(|p| p.parse().ok()).collect()
-    };
+    let parse = |s: &str| -> Vec<u64> { s.split('.').filter_map(|p| p.parse().ok()).collect() };
     parse(a).cmp(&parse(b))
 }
 
