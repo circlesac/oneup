@@ -1,6 +1,8 @@
 # oneup
 
-CalVer-based version management for npm packages and Rust crates.
+CalVer-based version management for npm packages, Rust crates, Android (gradle) apps, and Go projects.
+
+Version sources: npm registry, crates.io, or **git tags** (used for gradle/Go, where there's no registry). The version format defaults to `YY.MM.MICRO`.
 
 ## Skills
 
