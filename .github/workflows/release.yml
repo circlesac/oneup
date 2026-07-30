@@ -83,10 +83,22 @@ jobs:
           cd ../../..
         shell: bash
 
+      - name: Package Debian artifact
+        if: endsWith(matrix.target, '-unknown-linux-gnu')
+        run: |
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-gnu) arch=amd64 ;;
+            aarch64-unknown-linux-gnu) arch=arm64 ;;
+            *) exit 1 ;;
+          esac
+          ./packaging/build-deb.sh "target/${{ matrix.target }}/release/oneup" "${{ needs.version.outputs.version }}" "$arch" .
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ matrix.name }}.*
+          path: |
+            ${{ matrix.name }}.*
+            oneup_*.deb
 
   github-release:
     needs: [version, build]
@@ -106,6 +118,7 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
+            artifacts/**/*.deb
             bin/install.sh
           generate_release_notes: true
 
@@ -146,7 +159,7 @@ jobs:
       - name: Publish to npm
         run: npm publish
 
-  publish-homebrew:
+  publish-package-indexes:
     needs: [version, github-release, build]
     runs-on: ubuntu-latest
     steps:
@@ -157,7 +170,7 @@ jobs:
         with:
           path: artifacts
 
-      - name: Update Homebrew formula
+      - name: Update Homebrew and APT indexes
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
@@ -177,9 +190,24 @@ jobs:
           sed -i "s/SHA_LINUX_ARM64/${SHA_LINUX_ARM64}/g" Formula/oneup.rb
           sed -i "s/SHA_LINUX_X64/${SHA_LINUX_X64}/g" Formula/oneup.rb
 
+
+          mapfile -t packages < <(find ../artifacts -type f -name 'oneup_*.deb' | sort)
+          test "${#packages[@]}" -eq 2
+          for package in "${packages[@]}"; do
+            ./apt/scripts/add-package.sh "$package" circlesac/oneup "v${VERSION}"
+          done
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/oneup.rb
+          git add Formula/oneup.rb "apt/manifests/oneup/${VERSION}"
+          git diff --cached --quiet && exit 0
           git commit -m "Update oneup to ${VERSION}"
-          git push
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin main; then
+              exit 0
+            fi
+            printf 'push attempt %s failed\n' "$attempt" >&2
+          done
+          exit 1
 
