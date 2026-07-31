@@ -4,6 +4,16 @@ CalVer-based version management for npm packages, Rust crates, Android (gradle) 
 
 Version sources: npm registry, crates.io, or **git tags** (used for gradle/Go, where there's no registry). The version format defaults to `YY.MM.MICRO`.
 
+For a package or service in a monorepo, scope git-tag versions with a prefix:
+
+```bash
+VERSION=$(oneup version --source git --tag-prefix 'auth@' --target apps/auth/package.json | tail -1)
+git tag "auth@$VERSION"
+```
+
+Only matching tags such as `auth@26.7.0` participate in that version sequence;
+other package tags and mutable channel tags such as `auth-dev` are ignored.
+
 ## Skills
 
 | Skill | Description |

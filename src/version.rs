@@ -11,6 +11,7 @@ use crate::registry::{PackageInfo, RegistryClient};
 use crate::target::TargetFile;
 
 /// The concrete version source after resolving `--source auto`.
+#[derive(Copy, Clone)]
 enum ResolvedSource {
     Git,
     Crates,
@@ -69,6 +70,14 @@ pub fn run(args: VersionArgs) -> Result<()> {
         }
     };
 
+    if args.tag_prefix.as_deref() == Some("") {
+        bail!("--tag-prefix cannot be empty");
+    }
+
+    if args.tag_prefix.is_some() && !matches!(resolved, ResolvedSource::Git) {
+        bail!("--tag-prefix is only valid with the git version source");
+    }
+
     let project_dir = primary_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
@@ -80,7 +89,7 @@ pub fn run(args: VersionArgs) -> Result<()> {
                 eprintln!("[source] dir: {}", project_dir.display());
             }
 
-            git_source::get_package(project_dir, &fmt, args.verbose)
+            git_source::get_package(project_dir, &fmt, args.tag_prefix.as_deref(), args.verbose)
         }
         ResolvedSource::Crates => {
             let client = CratesIoClient::new(args.registry.as_deref());

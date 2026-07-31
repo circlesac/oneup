@@ -31,6 +31,7 @@ oneup version [OPTIONS]
 | `--target <PATH>` | Target file(s) to update — repeatable. Auto-detected if omitted (package.json, Cargo.toml, build.gradle / app/build.gradle / presentation/build.gradle, version.go) |
 | `--registry <URL>` | Registry URL override for npm/crates (auto-detected from .npmrc or crates.io) |
 | `--source <git\|npm\|crates\|auto>` | Version source. Default `auto`: crates.io for Cargo.toml, git tags for gradle/Go, npm otherwise. `git` forces git tags for any target |
+| `--tag-prefix <PREFIX>` | With the git source, require and strip a tag namespace such as `auth@` before parsing the version |
 | `--format <FMT>` | Version format using CalVer tokens. Default: `YY.MM.MICRO` |
 | `--dry-run` | Show what would happen without making changes |
 | `--verbose` | Print detailed debug output |
@@ -51,6 +52,19 @@ oneup version [OPTIONS]
 ## Git-tag version source
 
 For gradle and Go there's no registry, so oneup derives published versions from **git tags**: it runs `git tag --list` in the target's directory, strips an optional leading `v`, keeps tags that parse under the active `--format`, and treats the highest as the latest. Non-matching tags (e.g. `nightly`) are ignored. If the directory isn't a git repo or no tag matches, oneup starts at MICRO `0`. Tag your releases (`git tag v$VERSION`) so the next MICRO increments correctly. Use `--source git` to force this source for any target.
+
+In a monorepo, use `--tag-prefix` so each package or service has an independent
+sequence. The prefix is required and stripped before the optional leading `v`
+and version are parsed:
+
+```bash
+VERSION=$(oneup version --source git --tag-prefix 'auth@' --target apps/auth/package.json | tail -1)
+git tag "auth@$VERSION"
+```
+
+With that command, `auth@26.7.0` and `auth@v26.7.1` match; `v26.7.9`,
+`cli@26.7.4`, and `auth-dev` are ignored. `--tag-prefix` is rejected when the
+resolved source is npm or crates.io.
 
 ## CalVer Format
 

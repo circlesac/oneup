@@ -29,6 +29,11 @@ pub struct VersionArgs {
     #[arg(long, value_enum, default_value_t = Source::Auto)]
     pub source: Source,
 
+    /// Git tag prefix to require before the version (for example `auth@`).
+    /// Only valid when the resolved version source is git.
+    #[arg(long, value_name = "PREFIX")]
+    pub tag_prefix: Option<String>,
+
     /// Version format (CalVer tokens: YYYY, YY, MM, DD, MICRO)
     #[arg(long, default_value = "YY.MM.MICRO")]
     pub format: String,
