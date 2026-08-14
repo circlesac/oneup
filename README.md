@@ -14,6 +14,12 @@ git tag "auth@$VERSION"
 Only matching tags such as `auth@26.7.0` participate in that version sequence;
 other package tags and mutable channel tags such as `auth-dev` are ignored.
 
+Channel-qualified version tags reserve their numeric version in the same
+sequence. For example, `v26.8.2-internal` makes the next `YY.MM.MICRO` version
+`26.8.3`. Use a suffix-free tag such as `v26.8.3` for the stable release; the
+suffix describes the distribution channel and is never written to a target
+version field.
+
 ## Skills
 
 | Skill | Description |

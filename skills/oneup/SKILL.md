@@ -51,7 +51,7 @@ oneup version [OPTIONS]
 
 ## Git-tag version source
 
-For gradle and Go there's no registry, so oneup derives published versions from **git tags**: it runs `git tag --list` in the target's directory, strips an optional leading `v`, keeps tags that parse under the active `--format`, and treats the highest as the latest. Non-matching tags (e.g. `nightly`) are ignored. If the directory isn't a git repo or no tag matches, oneup starts at MICRO `0`. Tag your releases (`git tag v$VERSION`) so the next MICRO increments correctly. Use `--source git` to force this source for any target.
+For gradle and Go there's no registry, so oneup derives published versions from **git tags**: it runs `git tag --list` in the target's directory, strips an optional leading `v`, keeps tags whose numeric base parses under the active `--format`, and treats the highest as the latest. A channel suffix such as `-internal`, `-beta.1`, or `-rc.1` reserves the numeric base without being written to target files: `v26.8.2-internal` makes the next version `26.8.3`. Use suffix-free tags for stable releases. Non-matching tags (e.g. `nightly`) are ignored. If the directory isn't a git repo or no tag matches, oneup starts at MICRO `0`. Tag every distributed build (`git tag v$VERSION-internal` for an internal build or `git tag v$VERSION` for a stable release) so the next MICRO increments correctly. Use `--source git` to force this source for any target.
 
 In a monorepo, use `--tag-prefix` so each package or service has an independent
 sequence. The prefix is required and stripped before the optional leading `v`
@@ -62,7 +62,7 @@ VERSION=$(oneup version --source git --tag-prefix 'auth@' --target apps/auth/pac
 git tag "auth@$VERSION"
 ```
 
-With that command, `auth@26.7.0` and `auth@v26.7.1` match; `v26.7.9`,
+With that command, `auth@26.7.0`, `auth@v26.7.1`, and `auth@v26.7.2-internal` match; `v26.7.9`,
 `cli@26.7.4`, and `auth-dev` are ignored. `--tag-prefix` is rejected when the
 resolved source is npm or crates.io.
 
