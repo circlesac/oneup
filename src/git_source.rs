@@ -8,9 +8,10 @@ use crate::registry::PackageInfo;
 ///
 /// Runs `git -C <dir> tag --list`, keeps only tags with `tag_prefix` when one is
 /// configured, strips an optional leading `v` from the remaining version, and
-/// keeps those that parse under the active `VersionFormat`. If `dir` is not a
-/// git repo, git is unavailable, or no tag matches, returns
-/// `PackageInfo::NotFound`.
+/// keeps those whose numeric base parses under the active `VersionFormat`.
+/// Channel suffixes such as `-internal` or `-rc.1` consume the same numeric
+/// sequence as their suffix-free release tag. If `dir` is not a git repo, git
+/// is unavailable, or no tag matches, returns `PackageInfo::NotFound`.
 pub fn get_package(
     dir: &Path,
     fmt: &VersionFormat,
@@ -69,8 +70,9 @@ pub fn get_package(
 /// Pure tag → `PackageInfo` transform (no I/O), suitable for unit testing.
 ///
 /// Requires and strips `tag_prefix` when configured, strips an optional leading
-/// `v` from the remaining version, keeps only versions valid under `fmt`, and
-/// picks the highest as `latest`. Empty result → `PackageInfo::NotFound`.
+/// `v` from the remaining version, strips a valid channel suffix, keeps only
+/// numeric versions valid under `fmt`, and picks the highest as `latest`.
+/// Empty result → `PackageInfo::NotFound`.
 pub fn build_package_info(
     tags: Vec<String>,
     fmt: &VersionFormat,
@@ -83,9 +85,8 @@ pub fn build_package_info(
                 Some(prefix) => tag.strip_prefix(prefix)?,
                 None => tag,
             };
-            Some(version.strip_prefix('v').unwrap_or(version).to_string())
+            numeric_version(version.strip_prefix('v').unwrap_or(version), fmt)
         })
-        .filter(|t| fmt.extract_values(t).is_some())
         .collect();
 
     if versions.is_empty() {
@@ -93,9 +94,26 @@ pub fn build_package_info(
     }
 
     versions.sort_by(|a, b| compare_versions(a, b));
+    versions.dedup();
     let latest = versions.last().cloned().unwrap();
 
     PackageInfo::Found { versions, latest }
+}
+
+fn numeric_version(tag: &str, fmt: &VersionFormat) -> Option<String> {
+    if fmt.extract_values(tag).is_some() {
+        return Some(tag.to_string());
+    }
+
+    let (version, suffix) = tag.split_once('-')?;
+    let valid_suffix = suffix.split('.').all(|identifier| {
+        !identifier.is_empty()
+            && identifier
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    });
+
+    (valid_suffix && fmt.extract_values(version).is_some()).then(|| version.to_string())
 }
 
 fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
@@ -144,6 +162,47 @@ mod tests {
     }
 
     #[test]
+    fn channel_suffix_consumes_numeric_version() {
+        let tags = vec![
+            "v26.8.0".to_string(),
+            "v26.8.1-internal".to_string(),
+            "v26.8.2-rc.1".to_string(),
+        ];
+        match build_package_info(tags, &fmt(), None) {
+            PackageInfo::Found { versions, latest } => {
+                assert_eq!(versions, vec!["26.8.0", "26.8.1", "26.8.2"]);
+                assert_eq!(latest, "26.8.2");
+            }
+            PackageInfo::NotFound => panic!("expected Found"),
+        }
+    }
+
+    #[test]
+    fn stable_and_channel_tags_share_one_numeric_version() {
+        let tags = vec!["v26.8.2-internal".to_string(), "v26.8.2".to_string()];
+        match build_package_info(tags, &fmt(), None) {
+            PackageInfo::Found { versions, latest } => {
+                assert_eq!(versions, vec!["26.8.2"]);
+                assert_eq!(latest, "26.8.2");
+            }
+            PackageInfo::NotFound => panic!("expected Found"),
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_channel_suffixes() {
+        let tags = vec![
+            "v26.8.1-".to_string(),
+            "v26.8.2-internal/one".to_string(),
+            "v26.8.3-internal..one".to_string(),
+        ];
+        assert!(matches!(
+            build_package_info(tags, &fmt(), None),
+            PackageInfo::NotFound
+        ));
+    }
+
+    #[test]
     fn no_matching_tags_is_not_found() {
         let tags = vec!["nightly".to_string(), "release-1".to_string()];
         assert!(matches!(
@@ -185,6 +244,18 @@ mod tests {
             PackageInfo::Found { versions, latest } => {
                 assert_eq!(versions, vec!["26.7.2"]);
                 assert_eq!(latest, "26.7.2");
+            }
+            PackageInfo::NotFound => panic!("expected Found"),
+        }
+    }
+
+    #[test]
+    fn tag_prefix_preserves_channel_suffix() {
+        let tags = vec!["auth@v26.8.2-internal".to_string()];
+        match build_package_info(tags, &fmt(), Some("auth@")) {
+            PackageInfo::Found { versions, latest } => {
+                assert_eq!(versions, vec!["26.8.2"]);
+                assert_eq!(latest, "26.8.2");
             }
             PackageInfo::NotFound => panic!("expected Found"),
         }
