@@ -54,13 +54,13 @@ impl VersionFormat {
         }
 
         // MICRO, if present, must be the last component
-        if let Some(idx) = micro_index {
-            if idx != components.len() - 1 {
-                bail!(
-                    "invalid format '{}': MICRO must be the last component",
-                    format
-                );
-            }
+        if let Some(idx) = micro_index
+            && idx != components.len() - 1
+        {
+            bail!(
+                "invalid format '{}': MICRO must be the last component",
+                format
+            );
         }
 
         // Must have at least one date component
@@ -165,14 +165,12 @@ impl VersionFormat {
             if self.micro_index != Some(i) {
                 match self.components[i] {
                     Component::Mm => {
-                        if val < 1 || val > 12 {
+                        if !(1..=12).contains(&val) {
                             return None;
                         }
                     }
-                    Component::Dd => {
-                        if val < 1 || val > 31 {
-                            return None;
-                        }
+                    Component::Dd if (!(1..=31).contains(&val)) => {
+                        return None;
                     }
                     _ => {}
                 }

@@ -11,6 +11,7 @@ impl NpmrcConfig {
     /// Load .npmrc files following npm's resolution order:
     /// 1. Project-level .npmrc (directory of target file)
     /// 2. User-level ~/.npmrc
+    ///
     /// Environment variables (NPM_CONFIG_*) override file values.
     pub fn load(project_dir: &Path) -> Result<Self> {
         let mut entries = HashMap::new();

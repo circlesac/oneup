@@ -248,13 +248,13 @@ fn determine_version(
         }
         PackageInfo::Found { versions, latest } => {
             // Warn if registry latest is ahead of today
-            if let Some(latest_values) = fmt.extract_values(&latest) {
-                if fmt.ahead_of_today(&latest_values) {
-                    eprintln!(
-                        "warning: registry latest {} is ahead of current date prefix",
-                        latest
-                    );
-                }
+            if let Some(latest_values) = fmt.extract_values(&latest)
+                && fmt.ahead_of_today(&latest_values)
+            {
+                eprintln!(
+                    "warning: registry latest {} is ahead of current date prefix",
+                    latest
+                );
             }
 
             if fmt.has_micro() {
@@ -262,12 +262,11 @@ fn determine_version(
                 let mut max_micro: Option<u64> = None;
 
                 for v in &versions {
-                    if let Some(values) = fmt.extract_values(v) {
-                        if fmt.matches_today(&values) {
-                            if let Some(micro) = fmt.micro_value(&values) {
-                                max_micro = Some(max_micro.map_or(micro, |m: u64| m.max(micro)));
-                            }
-                        }
+                    if let Some(values) = fmt.extract_values(v)
+                        && fmt.matches_today(&values)
+                        && let Some(micro) = fmt.micro_value(&values)
+                    {
+                        max_micro = Some(max_micro.map_or(micro, |m: u64| m.max(micro)));
                     }
                 }
 
