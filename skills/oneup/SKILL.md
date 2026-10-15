@@ -45,7 +45,7 @@ oneup version [OPTIONS]
 | `build.gradle` / `build.gradle.kts` | `.gradle` / `.gradle.kts` | `versionName` (also bumps `versionCode`) | git tags |
 | Go source (e.g. `version.go`) | `.go` | `Version = "..."` const/var | git tags |
 
-**gradle:** oneup surgically rewrites only the `versionName` string (preserving quote style and formatting). It also updates `versionCode` (if present) to a monotonic integer derived from the CalVer version — numeric dot components `[a,b,c,d]` become `a*1_000_000 + b*10_000 + c*100 + d` (e.g. `26.7.0` → `26070000`). The `applicationId` is read as the package name (not otherwise used by the git source).
+**gradle:** oneup surgically rewrites only the `versionName` string (preserving quote style and formatting). It also updates `versionCode` (if present) using `YY*1_000_000 + MM*10_000 + MICRO` for the default three-component format (`YYMMXXXX`, e.g. `26.7.100` → `26070100`). MICRO ranges from 0 to 9999; larger values fail instead of overlapping the next month. Four-component formats retain `a*1_000_000 + b*10_000 + c*100 + d`, with `b`, `c`, and `d` limited to 0–99. Invalid components and codes outside 1–2100000000 are rejected before writing the Gradle file. Do not switch component counts within an existing version sequence. When migrating from the old three-component mapping (`MICRO*100`), ensure the next generated code exceeds every previously distributed code; see the README migration note. The `applicationId` is read as the package name (not otherwise used by the git source).
 
 **Go:** oneup rewrites only the quoted string of a `Version = "..."` const/var. The module path is read from a sibling/ancestor `go.mod` for reference. `go.mod` itself is never touched (it has no module-version field).
 

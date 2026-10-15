@@ -180,7 +180,7 @@ impl TargetFile {
                 // but only if a versionCode line exists.
                 let code_re = Regex::new(r#"(versionCode\s*=?\s*)(\d+)"#).unwrap();
                 if code_re.is_match(&output) {
-                    let code = version_code(new_version);
+                    let code = version_code(new_version)?;
                     output = code_re
                         .replace(&output, |c: &regex::Captures| format!("{}{}", &c[1], code))
                         .into_owned();
@@ -218,17 +218,40 @@ impl TargetFile {
     }
 }
 
-/// Compute an Android versionCode from a CalVer version string.
-/// Parses the numeric dot components [a, b, c, d] and computes
-/// `a*1_000_000 + b*10_000 + c*100 + d` (missing components = 0).
-/// Monotonic as CalVer increases, e.g. `26.7.0` → 26_070_000.
-fn version_code(version: &str) -> u64 {
-    let nums: Vec<u64> = version.split('.').map(|p| p.parse().unwrap_or(0)).collect();
-    let a = nums.first().copied().unwrap_or(0);
+/// Pack three-component versions as YYMMXXXX, leaving four digits for MICRO.
+/// Four-component formats retain two digits per trailing component.
+fn version_code(version: &str) -> Result<u64> {
+    let nums = version
+        .split('.')
+        .map(str::parse::<u64>)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .with_context(|| format!("invalid Android version: {version}"))?;
+    if nums.is_empty() || nums.len() > 4 {
+        bail!("Android versions require one to four numeric components: {version}");
+    }
+    let a = nums[0];
     let b = nums.get(1).copied().unwrap_or(0);
     let c = nums.get(2).copied().unwrap_or(0);
-    let d = nums.get(3).copied().unwrap_or(0);
-    a * 1_000_000 + b * 10_000 + c * 100 + d
+    let tail = if nums.len() == 4 {
+        let d = nums[3];
+        if c > 99 || d > 99 {
+            bail!("four-component Android versions require trailing components <= 99: {version}");
+        }
+        c * 100 + d
+    } else {
+        if c > 9999 {
+            bail!("Android MICRO must be <= 9999: {version}");
+        }
+        c
+    };
+    if a > 2100 || b > 99 {
+        bail!("Android version components exceed versionCode capacity: {version}");
+    }
+    let code = a * 1_000_000 + b * 10_000 + tail;
+    if code == 0 || code > 2_100_000_000 {
+        bail!("Android versionCode must be between 1 and 2100000000: {version}");
+    }
+    Ok(code)
 }
 
 /// Walk up from a Go source file's directory looking for a `go.mod`,
@@ -424,18 +447,61 @@ edition = "2024"
 
     #[test]
     fn version_code_derivation() {
-        assert_eq!(version_code("26.7.0"), 26_070_000);
-        assert_eq!(version_code("26.7.3"), 26_070_300);
-        assert_eq!(version_code("26.12.5.9"), 26_120_509);
-        assert_eq!(version_code("26.7"), 26_070_000); // missing components = 0
-        assert_eq!(version_code("1"), 1_000_000);
+        assert_eq!(version_code("26.7.0").unwrap(), 26_070_000);
+        assert_eq!(version_code("26.7.3").unwrap(), 26_070_003);
+        assert_eq!(version_code("26.10.100").unwrap(), 26_100_100);
+        assert_eq!(version_code("26.10.9999").unwrap(), 26_109_999);
+        assert_eq!(version_code("26.12.5.9").unwrap(), 26_120_509);
+        assert_eq!(version_code("26.7").unwrap(), 26_070_000);
+        assert_eq!(version_code("1").unwrap(), 1_000_000);
+        assert_eq!(version_code("2100.0.0").unwrap(), 2_100_000_000);
+        assert_eq!(version_code("2026.10.15.0").unwrap(), 2_026_101_500);
     }
 
     #[test]
     fn version_code_is_monotonic() {
-        assert!(version_code("26.7.1") > version_code("26.7.0"));
-        assert!(version_code("26.8.0") > version_code("26.7.99"));
-        assert!(version_code("27.1.0") > version_code("26.12.99"));
+        let versions = [
+            "26.10.0",
+            "26.10.1",
+            "26.10.99",
+            "26.10.100",
+            "26.10.9999",
+            "26.11.0",
+            "26.12.9999",
+            "27.1.0",
+        ];
+        for pair in versions.windows(2) {
+            assert!(version_code(pair[0]).unwrap() < version_code(pair[1]).unwrap());
+        }
+        assert!(version_code("26.7.31.99").unwrap() < version_code("26.8.1.0").unwrap());
+    }
+
+    #[test]
+    fn version_code_rejects_overflow_and_invalid_components() {
+        for version in [
+            "26.10.10000",
+            "26.100.0",
+            "26.12.100.0",
+            "26.12.1.100",
+            "2100.0.1",
+            "18446744073709551615.1.0",
+            "18446744073709551616.1.0",
+            "0.0.0",
+            "26.10.bad",
+            "26..0",
+            "26.10.0.0.1",
+            "",
+        ] {
+            assert!(version_code(version).is_err(), "accepted {version}");
+        }
+    }
+
+    #[test]
+    fn invalid_version_code_does_not_modify_gradle() {
+        let f = temp_with_suffix(".gradle", GROOVY_GRADLE);
+        let target = TargetFile::read(f.path()).unwrap();
+        assert!(target.write(f.path(), "26.10.10000").is_err());
+        assert_eq!(std::fs::read_to_string(f.path()).unwrap(), GROOVY_GRADLE);
     }
 
     // --- Gradle (Groovy) ---
@@ -463,17 +529,17 @@ edition = "2024"
     fn write_gradle_groovy_updates_version_and_code() {
         let f = temp_with_suffix(".gradle", GROOVY_GRADLE);
         let target = TargetFile::read(f.path()).unwrap();
-        target.write(f.path(), "26.7.0").unwrap();
+        target.write(f.path(), "26.7.100").unwrap();
 
         let content = std::fs::read_to_string(f.path()).unwrap();
-        assert!(content.contains("versionName '26.7.0'"));
-        assert!(content.contains("versionCode 26070000"));
+        assert!(content.contains("versionName '26.7.100'"));
+        assert!(content.contains("versionCode 26070100"));
         // Preserve the rest of the file.
         assert!(content.contains("applicationId 'com.example.app'"));
         assert!(content.contains("android {"));
 
         let updated = TargetFile::read(f.path()).unwrap();
-        assert_eq!(updated.version, "26.7.0");
+        assert_eq!(updated.version, "26.7.100");
     }
 
     #[test]
@@ -484,10 +550,10 @@ edition = "2024"
         );
         let target = TargetFile::read(f.path()).unwrap();
         assert_eq!(target.package_name, "app"); // no applicationId → placeholder
-        target.write(f.path(), "26.7.0").unwrap();
+        target.write(f.path(), "26.7.100").unwrap();
 
         let content = std::fs::read_to_string(f.path()).unwrap();
-        assert!(content.contains("versionName '26.7.0'"));
+        assert!(content.contains("versionName '26.7.100'"));
         assert!(!content.contains("versionCode"));
     }
 
@@ -515,11 +581,11 @@ edition = "2024"
     fn write_gradle_kts_updates_version_and_code() {
         let f = temp_with_suffix(".gradle.kts", KTS_GRADLE);
         let target = TargetFile::read(f.path()).unwrap();
-        target.write(f.path(), "26.7.0").unwrap();
+        target.write(f.path(), "26.7.100").unwrap();
 
         let content = std::fs::read_to_string(f.path()).unwrap();
-        assert!(content.contains("versionName = \"26.7.0\""));
-        assert!(content.contains("versionCode = 26070000"));
+        assert!(content.contains("versionName = \"26.7.100\""));
+        assert!(content.contains("versionCode = 26070100"));
         assert!(content.contains("applicationId = \"com.example.app\""));
     }
 
